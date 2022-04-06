@@ -620,7 +620,10 @@ class Recognizer(AudioSource):
 
         return b"".join(frames), elapsed_time
 
-    def listen(self, source, timeout=None, phrase_time_limit=None, snowboy_configuration=None):
+    """
+    Added optional stop_signal param for the termination of listen by the user directly
+    """
+    def listen(self, source, timeout=None, phrase_time_limit=None, snowboy_configuration=None, stop_signal=None):
         """
         Records a single phrase from ``source`` (an ``AudioSource`` instance) into an ``AudioData`` instance, which it returns.
 
@@ -706,6 +709,10 @@ class Recognizer(AudioSource):
                     pause_count += 1
                 if pause_count > pause_buffer_count:  # end of the phrase
                     break
+                # check stop_signal
+                if stop_signal and stop_signal[0]:
+                    stop_signal[0] = False
+                    break
 
             # check how long the detected phrase is, and retry listening if the phrase is too short
             phrase_count -= pause_count  # exclude the buffers for the pause before the phrase
@@ -729,6 +736,7 @@ class Recognizer(AudioSource):
         """
         assert isinstance(source, AudioSource), "Source must be an audio source"
         running = [True]
+        interrupt_signal = [False]
 
         def threaded_listen():
             with source as s:
@@ -745,10 +753,13 @@ class Recognizer(AudioSource):
             if wait_for_stop:
                 listener_thread.join()  # block until the background thread is done, which can take around 1 second
 
+        def interrupter():
+            interrupt_signal[0] = True
+
         listener_thread = threading.Thread(target=threaded_listen)
         listener_thread.daemon = True
         listener_thread.start()
-        return stopper
+        return stopper, interrupter
 
     def recognize_sphinx(self, audio_data, language="en-US", keyword_entries=None, grammar=None, show_all=False):
         """
